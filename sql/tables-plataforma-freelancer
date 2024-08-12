@@ -88,6 +88,14 @@ CREATE TABLE HabilidadeFreelancer (
     freelancerId INT
 );
 
+CREATE TABLE carteiras(
+	carteira_id SERIAL,
+	usuario_documento character varying (20),
+	saldo money,
+	FOREIGN KEY(usuario_documento) REFERENCES usuario(documento),
+	PRIMARY KEY(carteira_id, usuario_documento)
+);
+
 ALTER TABLE Projeto
 ADD FOREIGN KEY (empresaId) REFERENCES Empresa(idEmpresa),
 ADD FOREIGN KEY (freelancerId) REFERENCES Freelancer(idFreelancer);
