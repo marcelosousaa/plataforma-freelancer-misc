@@ -1,0 +1,374 @@
+
+-- FUNCTION: public.buscar_projetos_compatíveis(integer)
+
+-- DROP FUNCTION IF EXISTS public."buscar_projetos_compatíveis"(integer);
+
+CREATE OR REPLACE FUNCTION public."buscar_projetos_compatíveis"(
+	func_idfreelancer integer)
+    RETURNS TABLE(idprojeto integer, titulo character varying, descricao text, orcamento character varying, prazo character varying, status character varying, habilidades_compativeis text, habilidades_nao_compativeis text) 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+DECLARE
+    freelancer_exists BOOLEAN;
+BEGIN
+    -- Verifica se o freelancer existe
+    SELECT EXISTS(SELECT 1 FROM Freelancer WHERE idFreelancer = func_idFreelancer) INTO freelancer_exists;
+    IF NOT freelancer_exists THEN
+        RAISE EXCEPTION 'ID de Freelancer % não encontrado', func_idFreelancer;
+    END IF;
+
+    -- Retorna os projetos compatíveis com as habilidades do freelancer
+    RETURN QUERY
+    SELECT 
+        p.idProjeto, 
+        p.titulo, 
+        p.descricao, 
+        p.orcamento, 
+        p.prazo, 
+        p.status,
+        -- Habilidades compatíveis
+        STRING_AGG(DISTINCT hp.habilidade, ', ') AS habilidades_compativeis,
+        -- Habilidades não compatíveis
+        STRING_AGG(DISTINCT hnp.habilidade, ', ') AS habilidades_nao_compativeis
+    FROM Projeto p
+    JOIN HabilidadeProjeto hp ON p.idProjeto = hp.projetoId
+    -- Apenas habilidades compatíveis (que o freelancer possui)
+    JOIN HabilidadeFreelancer hf ON hp.habilidade = hf.habilidade AND hf.freelancerId = func_idFreelancer
+    -- Habilidades do projeto que o freelancer não possui
+    LEFT JOIN HabilidadeProjeto hnp ON p.idProjeto = hnp.projetoId AND hnp.habilidade NOT IN (
+        SELECT hf2.habilidade FROM HabilidadeFreelancer hf2 WHERE hf2.freelancerId = func_idFreelancer
+    )
+    WHERE p.status = 'ATIVO'
+    GROUP BY p.idProjeto, p.titulo, p.descricao, p.orcamento, p.prazo, p.status;
+
+    -- Verifica se nenhum projeto foi encontrado
+    IF NOT FOUND THEN
+        RAISE NOTICE 'Nenhum Projeto Compatível';
+        RETURN;
+    END IF;
+END;
+$BODY$;
+
+ALTER FUNCTION public."buscar_projetos_compatíveis"(integer)
+    OWNER TO postgres;
+
+-- FUNCTION: public.listar_empresas()
+
+-- DROP FUNCTION IF EXISTS public.listar_empresas();
+
+CREATE OR REPLACE FUNCTION public.listar_empresas(
+	)
+    RETURNS TABLE(id_empresa integer, email character varying, cnpj character varying, nome character varying, telefone character varying, logradouro character varying, numero character varying, complemento character varying, bairro character varying, cidade character varying, cep character varying, estado character varying, pais character varying, nome_empresa character varying, ramo_atuacao character varying, site character varying) 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+BEGIN
+    RETURN QUERY
+    SELECT
+        e.idEmpresa,
+        u.email,
+        e.cnpj,
+        e.nome,
+        e.telefone,
+        en.logradouro,
+        en.numero,
+        en.complemento,
+        en.bairro,
+        en.cidade,
+        en.cep,
+        en.estado,
+        en.pais,
+        e.nomeEmpresa,
+        e.ramoAtuacao,
+        e.site
+    FROM Empresa e
+    JOIN Usuario u ON e.usuarioId = u.idUsuario
+    LEFT JOIN Endereco en ON e.enderecoId = en.idEndereco;
+END;
+$BODY$;
+
+ALTER FUNCTION public.listar_empresas()
+    OWNER TO postgres;
+
+-- FUNCTION: public.listar_freelancers()
+
+-- DROP FUNCTION IF EXISTS public.listar_freelancers();
+
+CREATE OR REPLACE FUNCTION public.listar_freelancers(
+	)
+    RETURNS TABLE(idfreelancer integer, email character varying, nome character varying, cpf character varying, datanascimento character varying, telefone character varying, cidade character varying, estado character varying, descricao character varying, disponibilidade character varying, datacriacao character varying, status character varying, habilidades character varying) 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+BEGIN
+    RETURN QUERY
+    SELECT f.idFreelancer, u.email, f.nome, f.cpf, f.dataNascimento, f.telefone,
+           e.cidade, e.estado, f.descricao, f.disponibilidade, f.dataCriacao, f.status,
+           string_agg(hf.habilidade, ',')::VARCHAR as habilidades
+    FROM Freelancer f
+    JOIN Usuario u ON f.usuarioId = u.idUsuario
+    JOIN Endereco e ON f.enderecoId = e.idEndereco
+    LEFT JOIN HabilidadeFreelancer hf ON f.idFreelancer = hf.freelancerId
+    GROUP BY f.idFreelancer, u.email, f.nome, f.cpf, f.dataNascimento, f.telefone,
+             e.cidade, e.estado, f.descricao, f.disponibilidade, f.dataCriacao, f.status;
+END;
+$BODY$;
+
+ALTER FUNCTION public.listar_freelancers()
+    OWNER TO postgres;
+
+-- FUNCTION: public.listar_propostas_por_projeto(integer)
+
+-- DROP FUNCTION IF EXISTS public.listar_propostas_por_projeto(integer);
+
+CREATE OR REPLACE FUNCTION public.listar_propostas_por_projeto(
+	projeto_id integer)
+    RETURNS TABLE(propostaid integer, freelancernome character varying, freelancertelefone character varying, freelanceremail character varying, projetoid integer, valor character varying, datacriacao character varying, status character varying, observacao text) 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+BEGIN
+    -- Verifica se o projeto existe
+    IF NOT EXISTS (SELECT 1 FROM Projeto WHERE idProjeto = projeto_id) THEN
+        RAISE EXCEPTION 'Projeto com ID % não encontrado', projeto_id;
+    END IF;
+
+    -- Retorna as propostas relacionadas ao projeto
+    RETURN QUERY
+    SELECT 
+        p.propostaId,
+        f.nome AS freelancerNome,
+        f.telefone AS freelancerTelefone,
+        u.email AS freelancerEmail,
+        p.projetoId,
+        p.valor,
+        p.dataCriacao,
+        p.status,
+        p.observacao
+    FROM Proposta p
+    JOIN Freelancer f ON p.freelancerId = f.idFreelancer
+    JOIN Usuario u ON f.usuarioId = u.idUsuario
+    WHERE p.projetoId = projeto_id;
+
+    -- Caso não haja propostas, retorna null
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+END;
+$BODY$;
+
+ALTER FUNCTION public.listar_propostas_por_projeto(integer)
+    OWNER TO postgres;
+
+-- FUNCTION: public.listar_todos_projetos()
+
+-- DROP FUNCTION IF EXISTS public.listar_todos_projetos();
+
+CREATE OR REPLACE FUNCTION public.listar_todos_projetos(
+	)
+    RETURNS TABLE(id_projeto integer, titulo character varying, descricao text, orcamento character varying, prazo character varying, status character varying, data_criacao character varying, empresa_id integer, freelancer_id integer, habilidades text) 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+BEGIN
+    RETURN QUERY
+    SELECT
+        p.idProjeto,
+        p.titulo,
+        p.descricao,
+        p.orcamento,
+        p.prazo,
+        p.status,
+        p.dataCriacao,
+        p.empresaId,
+        p.freelancerId,
+        COALESCE(
+            STRING_AGG(hp.habilidade, ','), ''
+        ) AS habilidades
+    FROM Projeto p
+    LEFT JOIN HabilidadeProjeto hp ON p.idProjeto = hp.projetoId
+    GROUP BY p.idProjeto;
+END;
+$BODY$;
+
+ALTER FUNCTION public.listar_todos_projetos()
+    OWNER TO postgres;
+
+-- FUNCTION: public.obter_detalhes_empresa(integer)
+
+-- DROP FUNCTION IF EXISTS public.obter_detalhes_empresa(integer);
+
+CREATE OR REPLACE FUNCTION public.obter_detalhes_empresa(
+	empresa_id integer)
+    RETURNS TABLE(id_empresa integer, email character varying, cnpj character varying, nome character varying, telefone character varying, logradouro character varying, numero character varying, complemento character varying, bairro character varying, cidade character varying, cep character varying, estado character varying, pais character varying, nome_empresa character varying, ramo_atuacao character varying, site character varying, nota_media numeric, avaliacoes json, projetos json) 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+BEGIN
+    -- Verifica se a empresa existe
+    IF NOT EXISTS (SELECT 1 FROM Empresa WHERE idEmpresa = empresa_id) THEN
+        RAISE EXCEPTION 'ID de Empresa % não encontrada', empresa_id;
+    END IF;
+
+    RETURN QUERY
+    SELECT
+        e.idEmpresa,
+        u.email,
+        e.cnpj,
+        e.nome,
+        e.telefone,
+        en.logradouro,
+        en.numero,
+        en.complemento,
+        en.bairro,
+        en.cidade,
+        en.cep,
+        en.estado,
+        en.pais,
+        e.nomeEmpresa,
+        e.ramoAtuacao,
+        e.site,
+        COALESCE(AVG(a.nota), 0) AS nota_media,
+        (SELECT json_agg(
+            json_build_object(
+                'idAvaliacao', a.idAvaliacao,
+                'empresaId', a.empresaId,
+                'freelancerId', a.freelancerId,
+                'projetoId', a.projetoId,
+                'avaliado', a.avaliado,
+                'nota', a.nota,
+                'comentario', a.comentario,
+                'dataAvaliacao', a.dataAvaliacao
+            )
+        ) FROM Avaliacao a WHERE a.empresaId = e.idEmpresa AND a.avaliado = 'EMPRESA') AS avaliacoes,
+        (SELECT json_agg(
+            json_build_object(
+                'idProjeto', p.idProjeto,
+                'titulo', p.titulo,
+                'descricao', p.descricao,
+                'orcamento', p.orcamento,
+                'prazo', p.prazo,
+                'statusProjeto', p.status,  -- use o campo status e mapeie para statusProjeto
+                'dataCriacao', p.dataCriacao,
+                'empresaId', p.empresaId,
+                'freelancerId', p.freelancerId,
+                'habilidades', (
+                    SELECT json_agg(h.habilidade)
+                    FROM HabilidadeProjeto h
+                    WHERE h.projetoId = p.idProjeto
+                )
+            )
+        ) FROM Projeto p WHERE p.empresaId = e.idEmpresa) AS projetos
+    FROM Empresa e
+    JOIN Usuario u ON e.usuarioId = u.idUsuario
+    LEFT JOIN Endereco en ON e.enderecoId = en.idEndereco
+    LEFT JOIN Avaliacao a ON e.idEmpresa = a.empresaId AND a.avaliado = 'EMPRESA'
+    WHERE e.idEmpresa = empresa_id
+    GROUP BY e.idEmpresa, u.email, en.logradouro, en.numero, en.complemento, en.bairro, en.cidade, en.cep, en.estado, en.pais;
+END;
+$BODY$;
+
+ALTER FUNCTION public.obter_detalhes_empresa(integer)
+    OWNER TO postgres;
+
+-- FUNCTION: public.obter_detalhes_freelancer(integer)
+
+-- DROP FUNCTION IF EXISTS public.obter_detalhes_freelancer(integer);
+
+CREATE OR REPLACE FUNCTION public.obter_detalhes_freelancer(
+	freelancer_id integer)
+    RETURNS TABLE(id_freelancer integer, email character varying, nome character varying, cpf character varying, data_nascimento character varying, telefone character varying, logradouro character varying, numero character varying, complemento character varying, bairro character varying, cidade character varying, cep character varying, estado character varying, pais character varying, descricao character varying, disponibilidade character varying, data_criacao character varying, status_freelancer character varying, nota_media numeric, habilidades json, avaliacoes json, projetos json) 
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+BEGIN
+    -- Verifica se o freelancer existe
+    IF NOT EXISTS (SELECT 1 FROM Freelancer WHERE idFreelancer = freelancer_id) THEN
+        RAISE EXCEPTION 'ID de Freelancer % não encontrada', freelancer_id;
+    END IF;
+
+    RETURN QUERY
+    SELECT
+        f.idFreelancer,
+        u.email,
+        f.nome,
+        f.cpf,
+        f.dataNascimento,
+        f.telefone,
+        en.logradouro,
+        en.numero,
+        en.complemento,
+        en.bairro,
+        en.cidade,
+        en.cep,
+        en.estado,
+        en.pais,
+        f.descricao,
+        f.disponibilidade,
+        f.dataCriacao,
+        f.status,
+        COALESCE(AVG(a.nota), 0) AS nota_media,
+        (SELECT json_agg(h.habilidade) FROM HabilidadeFreelancer h WHERE h.freelancerId = f.idFreelancer) AS habilidades,
+        (SELECT json_agg(
+            json_build_object(
+                'idAvaliacao', a.idAvaliacao,
+                'empresaId', a.empresaId,
+                'freelancerId', a.freelancerId,
+                'projetoId', a.projetoId,
+                'avaliado', a.avaliado,
+                'nota', a.nota,
+                'comentario', a.comentario,
+                'dataAvaliacao', a.dataAvaliacao
+            )
+        ) FROM Avaliacao a WHERE a.freelancerId = f.idFreelancer AND a.avaliado = 'FREELANCER') AS avaliacoes,
+        (SELECT json_agg(
+            json_build_object(
+                'idProjeto', p.idProjeto,
+                'titulo', p.titulo,
+                'descricao', p.descricao,
+                'orcamento', p.orcamento,
+                'prazo', p.prazo,
+                'statusProjeto', p.status,
+                'dataCriacao', p.dataCriacao,
+                'empresaId', p.empresaId,
+                'freelancerId', p.freelancerId,
+                'habilidades', (
+                    SELECT json_agg(h.habilidade)
+                    FROM HabilidadeProjeto h
+                    WHERE h.projetoId = p.idProjeto
+                )
+            )
+        ) FROM Projeto p WHERE p.freelancerId = f.idFreelancer) AS projetos
+    FROM Freelancer f
+    JOIN Usuario u ON f.usuarioId = u.idUsuario
+    LEFT JOIN Endereco en ON f.enderecoId = en.idEndereco
+    LEFT JOIN Avaliacao a ON f.idFreelancer = a.freelancerId AND a.avaliado = 'FREELANCER'
+    WHERE f.idFreelancer = freelancer_id
+    GROUP BY f.idFreelancer, u.email, en.logradouro, en.numero, en.complemento, en.bairro, en.cidade, en.cep, en.estado, en.pais;
+END;
+$BODY$;
+
+ALTER FUNCTION public.obter_detalhes_freelancer(integer)
+    OWNER TO postgres;

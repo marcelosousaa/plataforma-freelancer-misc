@@ -1,0 +1,519 @@
+-- PROCEDURE: public.atualizar_empresa(integer, character varying, character varying, character varying, character varying)
+
+-- DROP PROCEDURE IF EXISTS public.atualizar_empresa(integer, character varying, character varying, character varying, character varying);
+
+CREATE OR REPLACE PROCEDURE public.atualizar_empresa(
+	IN in_idempresa integer,
+	IN in_nome character varying,
+	IN in_telefone character varying,
+	IN in_ramo character varying,
+	IN in_site character varying)
+LANGUAGE 'plpgsql'
+AS $BODY$
+BEGIN
+    -- Verifica se a empresa com o id fornecido existe
+    IF EXISTS (SELECT 1 FROM Empresa WHERE idEmpresa = in_idEmpresa) THEN
+        -- Atualiza os dados da empresa
+        UPDATE Empresa
+        SET nome = in_nome,
+            telefone = in_telefone,
+            ramoAtuacao = in_ramo,
+            site = in_site
+        WHERE idEmpresa = in_idEmpresa;
+        RAISE NOTICE 'Empresa de id % atualizada com sucesso.', in_idEmpresa;
+    ELSE
+        -- Caso a empresa não exista, lança um erro com o formato solicitado
+        RAISE EXCEPTION 'ID de Empresa % não encontrada.', in_idEmpresa;
+    END IF;
+END;
+$BODY$;
+ALTER PROCEDURE public.atualizar_empresa(integer, character varying, character varying, character varying, character varying)
+    OWNER TO postgres;
+
+-- PROCEDURE: public.atualizar_freelancer(integer, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, text, character varying, character varying, character varying[])
+
+-- DROP PROCEDURE IF EXISTS public.atualizar_freelancer(integer, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, text, character varying, character varying, character varying[]);
+
+CREATE OR REPLACE PROCEDURE public.atualizar_freelancer(
+	IN in_idfreelancer integer,
+	IN in_telefone character varying,
+	IN in_logradouro character varying,
+	IN in_numero character varying,
+	IN in_complemento character varying,
+	IN in_bairro character varying,
+	IN in_cidade character varying,
+	IN in_cep character varying,
+	IN in_estado character varying,
+	IN in_pais character varying,
+	IN in_descricao text,
+	IN in_disponibilidade character varying,
+	IN in_status character varying,
+	IN in_habilidades character varying[])
+LANGUAGE 'plpgsql'
+AS $BODY$
+DECLARE
+    endereco_id INT;
+BEGIN
+    -- Verifica se o freelancer com o id fornecido existe
+    IF NOT EXISTS (SELECT 1 FROM Freelancer WHERE idFreelancer = in_idFreelancer) THEN
+        RAISE EXCEPTION 'ID de Freelancer % não encontrado.', in_idFreelancer;
+    END IF;
+
+    -- Atualiza os dados básicos do freelancer
+    UPDATE Freelancer
+    SET telefone = in_telefone,
+        descricao = in_descricao,
+        disponibilidade = in_disponibilidade,
+        status = in_status
+    WHERE idFreelancer = in_idFreelancer;
+
+    -- Obtém o id do endereço do freelancer
+    SELECT enderecoId INTO endereco_id FROM Freelancer WHERE idFreelancer = in_idFreelancer;
+
+    -- Atualiza os dados do endereço
+    UPDATE Endereco
+    SET logradouro = in_logradouro,
+        numero = in_numero,
+        complemento = in_complemento,
+        bairro = in_bairro,
+        cidade = in_cidade,
+        cep = in_cep,
+        estado = in_estado,
+        pais = in_pais
+    WHERE idEndereco = endereco_id;
+
+    -- Remove as habilidades atuais do freelancer
+    DELETE FROM HabilidadeFreelancer WHERE freelancerId = in_idFreelancer;
+
+    -- Insere as novas habilidades
+    IF array_length(in_habilidades, 1) IS NOT NULL THEN
+        INSERT INTO HabilidadeFreelancer (habilidade, freelancerId)
+        SELECT unnest(in_habilidades), in_idFreelancer;
+    END IF;
+
+    RAISE NOTICE 'ID de Freelancer % atualizado com sucesso.', in_idFreelancer;
+END;
+$BODY$;
+ALTER PROCEDURE public.atualizar_freelancer(integer, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, text, character varying, character varying, character varying[])
+    OWNER TO postgres;
+
+-- PROCEDURE: public.atualizar_projeto(integer, character varying, text, character varying, character varying, character varying[])
+
+-- DROP PROCEDURE IF EXISTS public.atualizar_projeto(integer, character varying, text, character varying, character varying, character varying[]);
+
+CREATE OR REPLACE PROCEDURE public.atualizar_projeto(
+	IN in_idprojeto integer,
+	IN in_titulo character varying,
+	IN in_descricao text,
+	IN in_orcamento character varying,
+	IN in_prazo character varying,
+	IN in_habilidades character varying[])
+LANGUAGE 'plpgsql'
+AS $BODY$
+BEGIN
+    -- Verifica se o projeto com o id fornecido existe
+    IF NOT EXISTS (SELECT 1 FROM Projeto WHERE idProjeto = in_idProjeto) THEN
+        RAISE EXCEPTION 'ID de Projeto % não encontrado.', in_idProjeto;
+    END IF;
+
+    -- Atualiza os dados básicos do projeto
+    UPDATE Projeto
+    SET titulo = in_titulo,
+        descricao = in_descricao,
+        orcamento = in_orcamento,
+        prazo = in_prazo
+    WHERE idProjeto = in_idProjeto;
+
+    -- Remove as habilidades atuais do projeto
+    DELETE FROM HabilidadeProjeto WHERE projetoId = in_idProjeto;
+
+    -- Insere as novas habilidades
+    IF array_length(in_habilidades, 1) IS NOT NULL THEN
+        INSERT INTO HabilidadeProjeto (habilidade, projetoId)
+        SELECT unnest(in_habilidades), in_idProjeto;
+    END IF;
+
+    RAISE NOTICE 'Projeto de id % atualizado com sucesso.', in_idProjeto;
+END;
+$BODY$;
+ALTER PROCEDURE public.atualizar_projeto(integer, character varying, text, character varying, character varying, character varying[])
+    OWNER TO postgres;
+
+-- PROCEDURE: public.atualizastatusproposta(integer, character varying)
+
+-- DROP PROCEDURE IF EXISTS public.atualizastatusproposta(integer, character varying);
+
+CREATE OR REPLACE PROCEDURE public.atualizastatusproposta(
+	IN idproposta integer,
+	IN novostatus character varying)
+LANGUAGE 'plpgsql'
+AS $BODY$
+BEGIN
+    -- Verificar se a proposta existe
+    IF NOT EXISTS (SELECT 1 FROM Proposta WHERE propostaId = idProposta) THEN
+        RAISE EXCEPTION 'Proposta com id % não existe', idProposta;
+    END IF;
+
+    -- Verificar se o status é "ACEITA"
+    IF novoStatus = 'ACEITA' THEN
+        -- Verificar se o projeto já tem um freelancer associado
+        IF (SELECT freelancerId FROM Projeto WHERE idProjeto = (SELECT projetoId FROM Proposta WHERE propostaId = idProposta)) IS NOT NULL THEN
+            RAISE EXCEPTION 'Projeto já possui um freelancer associado';
+        ELSE
+            -- Atualizar o status do projeto para "ANDAMENTO"
+            UPDATE Projeto
+            SET status = 'ANDAMENTO',
+                freelancerId = (
+                    SELECT freelancerId
+                    FROM Proposta
+                    WHERE propostaId = idProposta
+                )
+            WHERE idProjeto = (
+                SELECT projetoId
+                FROM Proposta
+                WHERE propostaId = idProposta
+            );
+
+            -- Atualizar o status da proposta para "ACEITA"
+            UPDATE Proposta
+            SET status = 'ACEITA'
+            WHERE propostaId = idProposta;
+        END IF;
+    ELSE
+        -- Verificar se a proposta já foi aceita
+        IF (SELECT status FROM Proposta WHERE propostaId = idProposta) = 'ACEITA' THEN
+            RAISE EXCEPTION 'Proposta já foi aceita e não pode ser recusada';
+        ELSE
+            -- Atualizar o status da proposta para "RECUSADA"
+            UPDATE Proposta
+            SET status = 'RECUSADA'
+            WHERE propostaId = idProposta;
+        END IF;
+    END IF;
+END;
+$BODY$;
+ALTER PROCEDURE public.atualizastatusproposta(integer, character varying)
+    OWNER TO postgres;
+
+-- PROCEDURE: public.cadastrar_empresa(character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying)
+
+-- DROP PROCEDURE IF EXISTS public.cadastrar_empresa(character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying);
+
+CREATE OR REPLACE PROCEDURE public.cadastrar_empresa(
+	IN p_email character varying,
+	IN p_senha character varying,
+	IN p_tipousuario character varying,
+	IN p_cnpj character varying,
+	IN p_nome character varying,
+	IN p_telefone character varying,
+	IN p_logradouro character varying,
+	IN p_numero character varying,
+	IN p_complemento character varying,
+	IN p_bairro character varying,
+	IN p_cidade character varying,
+	IN p_cep character varying,
+	IN p_estado character varying,
+	IN p_pais character varying,
+	IN p_nomeempresa character varying,
+	IN p_ramoatuacao character varying,
+	IN p_site character varying)
+LANGUAGE 'plpgsql'
+AS $BODY$
+DECLARE
+    v_usuarioId INT;
+    v_enderecoId INT;
+    v_empresaId INT;
+    v_email_exists BOOLEAN;
+    v_cnpj_exists BOOLEAN;
+BEGIN
+    -- Verificar se o e-mail já existe
+    IF EXISTS (SELECT 1 FROM Usuario WHERE email = p_email) THEN
+        RAISE EXCEPTION 'Email % já está cadastrado', p_email;
+    END IF;
+
+    -- Verificar se o CNPJ já existe
+    IF EXISTS (SELECT 1 FROM Empresa WHERE cnpj = p_cnpj) THEN
+        RAISE EXCEPTION 'CNPJ % já está cadastrado', p_cnpj;
+    END IF;
+
+    -- Inserir um novo usuário
+    INSERT INTO Usuario (email, senha, tipoUsuario)
+    VALUES (p_email, p_senha, p_tipoUsuario)
+    RETURNING idUsuario INTO v_usuarioId;
+    
+    -- Inserir um novo endereço
+    INSERT INTO Endereco (logradouro, numero, complemento, bairro, cidade, cep, estado, pais)
+    VALUES (p_logradouro, p_numero, p_complemento, p_bairro, p_cidade, p_cep, p_estado, p_pais)
+    RETURNING idEndereco INTO v_enderecoId;
+    
+    -- Inserir uma nova empresa
+    INSERT INTO Empresa (usuarioId, cnpj, nome, telefone, enderecoId, nomeEmpresa, ramoAtuacao, site)
+    VALUES (v_usuarioId, p_cnpj, p_nome, p_telefone, v_enderecoId, p_nomeEmpresa, p_ramoAtuacao, p_site)
+    RETURNING idEmpresa INTO v_empresaId;
+    
+    RAISE NOTICE 'Empresa cadastrada com sucesso. ID: %', v_empresaId;
+END;
+$BODY$;
+ALTER PROCEDURE public.cadastrar_empresa(character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying)
+    OWNER TO postgres;
+
+-- PROCEDURE: public.cadastrar_freelancer(character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying[])
+
+-- DROP PROCEDURE IF EXISTS public.cadastrar_freelancer(character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying[]);
+
+CREATE OR REPLACE PROCEDURE public.cadastrar_freelancer(
+	IN p_email character varying,
+	IN p_senha character varying,
+	IN p_tipo_usuario character varying,
+	IN p_logradouro character varying,
+	IN p_numero character varying,
+	IN p_complemento character varying,
+	IN p_bairro character varying,
+	IN p_cidade character varying,
+	IN p_cep character varying,
+	IN p_estado character varying,
+	IN p_pais character varying,
+	IN p_nome character varying,
+	IN p_cpf character varying,
+	IN p_data_nascimento character varying,
+	IN p_telefone character varying,
+	IN p_descricao character varying,
+	IN p_disponibilidade character varying,
+	IN p_data_criacao character varying,
+	IN p_status character varying,
+	IN p_habilidades character varying[])
+LANGUAGE 'plpgsql'
+AS $BODY$
+DECLARE
+    v_usuario_id INT;
+    v_endereco_id INT;
+    v_freelancer_id INT;
+    habilidade VARCHAR;
+BEGIN
+    -- Verificar se o e-mail já existe
+    IF EXISTS (SELECT 1 FROM Usuario WHERE email = p_email) THEN
+        RAISE EXCEPTION 'Email % já está cadastrado', p_email;
+    END IF;
+
+    -- Verificar se o CPF já existe
+    IF EXISTS (SELECT 1 FROM Freelancer WHERE cpf = p_cpf) THEN
+        RAISE EXCEPTION 'CPF % já está cadastrado', p_cpf;
+    END IF;
+
+    -- Inserir um novo usuário
+    INSERT INTO Usuario (email, senha, tipoUsuario)
+    VALUES (p_email, p_senha, p_tipo_usuario)
+    RETURNING idUsuario INTO v_usuario_id;
+
+    -- Inserir um novo endereço
+    INSERT INTO Endereco (logradouro, numero, complemento, bairro, cidade, cep, estado, pais)
+    VALUES (p_logradouro, p_numero, p_complemento, p_bairro, p_cidade, p_cep, p_estado, p_pais)
+    RETURNING idEndereco INTO v_endereco_id;
+
+    -- Inserir um novo freelancer
+    INSERT INTO Freelancer (usuarioId, nome, cpf, dataNascimento, telefone, enderecoId, descricao, disponibilidade, dataCriacao, status)
+    VALUES (v_usuario_id, p_nome, p_cpf, p_data_nascimento, p_telefone, v_endereco_id, p_descricao, p_disponibilidade, p_data_criacao, p_status)
+    RETURNING idFreelancer INTO v_freelancer_id;
+
+    -- Inserir habilidades do freelancer
+    IF p_habilidades IS NOT NULL THEN
+        FOREACH habilidade IN ARRAY p_habilidades
+        LOOP
+            INSERT INTO HabilidadeFreelancer (habilidade, freelancerId)
+            VALUES (habilidade, v_freelancer_id);
+        END LOOP;
+    END IF;
+END;
+$BODY$;
+ALTER PROCEDURE public.cadastrar_freelancer(character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying, character varying[])
+    OWNER TO postgres;
+
+-- PROCEDURE: public.cadastrarprojeto(character varying, text, character varying, character varying, character varying, character varying, integer, character varying[])
+
+-- DROP PROCEDURE IF EXISTS public.cadastrarprojeto(character varying, text, character varying, character varying, character varying, character varying, integer, character varying[]);
+
+CREATE OR REPLACE PROCEDURE public.cadastrarprojeto(
+	IN p_titulo character varying,
+	IN p_descricao text,
+	IN p_orcamento character varying,
+	IN p_prazo character varying,
+	IN p_status character varying,
+	IN p_datacriacao character varying,
+	IN p_empresaid integer,
+	IN p_habilidades character varying[])
+LANGUAGE 'plpgsql'
+AS $BODY$
+DECLARE
+    v_projeto_id INT;
+    habilidade VARCHAR;
+    v_empresa_exists BOOLEAN;
+BEGIN
+    -- Verificar se o idEmpresa existe
+    SELECT EXISTS (SELECT 1 FROM Empresa WHERE idEmpresa = p_empresaId) INTO v_empresa_exists;
+    IF NOT v_empresa_exists THEN
+        RAISE EXCEPTION 'ID de Empresa % não existe', p_empresaId;
+    END IF;
+
+    -- Inserir um novo projeto
+    INSERT INTO Projeto (titulo, descricao, orcamento, prazo, status, dataCriacao, empresaId)
+    VALUES (p_titulo, p_descricao, p_orcamento, p_prazo, p_status, p_dataCriacao, p_empresaId)
+    RETURNING idProjeto INTO v_projeto_id;
+
+    -- Inserir habilidades do projeto
+    IF p_habilidades IS NOT NULL THEN
+        FOREACH habilidade IN ARRAY p_habilidades
+        LOOP
+            INSERT INTO HabilidadeProjeto (habilidade, projetoId)
+            VALUES (habilidade, v_projeto_id);
+        END LOOP;
+    END IF;
+END;
+$BODY$;
+ALTER PROCEDURE public.cadastrarprojeto(character varying, text, character varying, character varying, character varying, character varying, integer, character varying[])
+    OWNER TO postgres;
+
+-- PROCEDURE: public.criar_proposta(integer, integer, character varying, character varying, character varying, text)
+
+-- DROP PROCEDURE IF EXISTS public.criar_proposta(integer, integer, character varying, character varying, character varying, text);
+
+CREATE OR REPLACE PROCEDURE public.criar_proposta(
+	IN p_freelancerid integer,
+	IN p_projetoid integer,
+	IN p_valor character varying,
+	IN p_datacriacao character varying,
+	IN p_status character varying,
+	IN p_observacao text)
+LANGUAGE 'plpgsql'
+AS $BODY$
+DECLARE
+    v_freelancer_exists BOOLEAN;
+    v_projeto_exists BOOLEAN;
+BEGIN
+    -- Verificar se o freelancerId existe
+    SELECT EXISTS (SELECT 1 FROM Freelancer WHERE idFreelancer = p_freelancerId) INTO v_freelancer_exists;
+    IF NOT v_freelancer_exists THEN
+        RAISE EXCEPTION 'ID de Freelancer % não existe', p_freelancerId;
+    END IF;
+
+    -- Verificar se o projetoId existe
+    SELECT EXISTS (SELECT 1 FROM Projeto WHERE idProjeto = p_projetoId) INTO v_projeto_exists;
+    IF NOT v_projeto_exists THEN
+        RAISE EXCEPTION 'ID de Projeto % não existe', p_projetoId;
+    END IF;
+
+    -- Inserir uma nova proposta
+    INSERT INTO Proposta (freelancerId, projetoId, valor, dataCriacao, status, observacao)
+    VALUES (p_freelancerId, p_projetoId, p_valor, p_dataCriacao, p_status, p_observacao);
+END;
+$BODY$;
+ALTER PROCEDURE public.criar_proposta(integer, integer, character varying, character varying, character varying, text)
+    OWNER TO postgres;
+
+-- PROCEDURE: public.enviar_avaliacao(integer, integer, integer, character varying, integer, text, character varying)
+
+-- DROP PROCEDURE IF EXISTS public.enviar_avaliacao(integer, integer, integer, character varying, integer, text, character varying);
+
+CREATE OR REPLACE PROCEDURE public.enviar_avaliacao(
+	IN p_empresa_id integer,
+	IN p_freelancer_id integer,
+	IN p_projeto_id integer,
+	IN p_avaliado character varying,
+	IN p_nota integer,
+	IN p_comentario text,
+	IN p_data_avaliacao character varying)
+LANGUAGE 'plpgsql'
+AS $BODY$
+BEGIN
+    -- Validar se o id do projeto existe
+    IF NOT EXISTS (SELECT 1 FROM Projeto WHERE idProjeto = p_projeto_id) THEN
+        RAISE EXCEPTION 'Projeto não existe';
+    END IF;
+
+    -- Validar se o idFreelancer existe
+    IF NOT EXISTS (SELECT 1 FROM Freelancer WHERE idFreelancer = p_freelancer_id) THEN
+        RAISE EXCEPTION 'Freelancer não existe';
+    END IF;
+
+    -- Validar se o id da empresa existe
+    IF NOT EXISTS (SELECT 1 FROM Empresa WHERE idEmpresa = p_empresa_id) THEN
+        RAISE EXCEPTION 'Empresa não existe';
+    END IF;
+
+    -- Validar se o freelancer está associado ao projeto
+    IF NOT EXISTS (SELECT 1 FROM Projeto WHERE idProjeto = p_projeto_id AND freelancerId = p_freelancer_id) THEN
+        RAISE EXCEPTION 'Freelancer não está associado ao projeto';
+    END IF;
+
+    -- Validar se a empresa está associada ao projeto
+    IF NOT EXISTS (SELECT 1 FROM Projeto WHERE idProjeto = p_projeto_id AND empresaId = p_empresa_id) THEN
+        RAISE EXCEPTION 'Empresa não está associada ao projeto';
+    END IF;
+
+    -- Validar se a nota é de 1 até 5
+    IF p_nota < 1 OR p_nota > 5 THEN
+        RAISE EXCEPTION 'Nota deve ser entre 1 e 5';
+    END IF;
+
+    -- Verificar se já existe uma avaliação do mesmo tipo no projeto
+    IF EXISTS (
+        SELECT 1 FROM Avaliacao 
+        WHERE projetoId = p_projeto_id 
+        AND freelancerId = p_freelancer_id 
+        AND empresaId = p_empresa_id 
+        AND avaliado = p_avaliado
+    ) THEN
+        RAISE EXCEPTION 'Avaliação já existe';
+    END IF;
+
+    -- Inserir a nova avaliação
+    INSERT INTO Avaliacao (empresaId, freelancerId, projetoId, avaliado, nota, comentario, dataAvaliacao)
+    VALUES (p_empresa_id, p_freelancer_id, p_projeto_id, p_avaliado, p_nota, p_comentario, p_data_avaliacao);
+
+    -- Verificar se a quantidade de avaliações do projeto é igual a 2
+    IF (SELECT COUNT(*) FROM Avaliacao WHERE projetoId = p_projeto_id) = 2 THEN
+        -- Atualizar o status do projeto para "CONCLUIDO"
+        UPDATE Projeto SET status = 'CONCLUIDO' WHERE idProjeto = p_projeto_id;
+    END IF;
+END;
+$BODY$;
+ALTER PROCEDURE public.enviar_avaliacao(integer, integer, integer, character varying, integer, text, character varying)
+    OWNER TO postgres;
+
+-- PROCEDURE: public.excluir_projeto_se_nao_associado(integer)
+
+-- DROP PROCEDURE IF EXISTS public.excluir_projeto_se_nao_associado(integer);
+
+CREATE OR REPLACE PROCEDURE public.excluir_projeto_se_nao_associado(
+	IN in_idprojeto integer)
+LANGUAGE 'plpgsql'
+AS $BODY$
+DECLARE
+    projeto_existe BOOLEAN;
+    freelancer_associado BOOLEAN;
+BEGIN
+    -- Verifica se o projeto com o id fornecido existe
+    SELECT EXISTS(SELECT 1 FROM Projeto WHERE idProjeto = in_idProjeto) INTO projeto_existe;
+
+    IF NOT projeto_existe THEN
+        RAISE EXCEPTION 'ID de Projeto % não encontrado.', in_idProjeto;
+    END IF;
+
+    -- Verifica se o projeto está associado a algum freelancer
+    SELECT EXISTS(SELECT 1 FROM Projeto WHERE idProjeto = in_idProjeto AND freelancerId IS NOT NULL) 
+    INTO freelancer_associado;
+
+    IF freelancer_associado THEN
+        RAISE EXCEPTION 'Projeto com id % não pode ser excluído porque está associado a um freelancer.', in_idProjeto;
+    ELSE
+        -- Excluir habilidades associadas ao projeto
+        DELETE FROM HabilidadeProjeto WHERE projetoId = in_idProjeto;
+
+        -- Excluir o projeto
+        DELETE FROM Projeto WHERE idProjeto = in_idProjeto;
+
+        RAISE NOTICE 'Projeto com id % excluído com sucesso.', in_idProjeto;
+    END IF;
+END;
+$BODY$;
+ALTER PROCEDURE public.excluir_projeto_se_nao_associado(integer)
+    OWNER TO postgres;
