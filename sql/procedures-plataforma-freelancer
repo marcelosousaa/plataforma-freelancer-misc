@@ -232,13 +232,13 @@ BEGIN
     END IF;
 
     -- Verificar se o CNPJ já existe
-    IF EXISTS (SELECT 1 FROM Empresa WHERE cnpj = p_cnpj) THEN
+    IF EXISTS (SELECT 1 FROM Usuario WHERE documento = p_cnpj) THEN
         RAISE EXCEPTION 'CNPJ % já está cadastrado', p_cnpj;
     END IF;
 
     -- Inserir um novo usuário
-    INSERT INTO Usuario (email, senha, tipoUsuario)
-    VALUES (p_email, p_senha, p_tipoUsuario)
+    INSERT INTO Usuario (email, senha, tipoUsuario, documento)
+    VALUES (p_email, p_senha, p_tipoUsuario, p_cnpj)
     RETURNING idUsuario INTO v_usuarioId;
     
     -- Inserir um novo endereço
@@ -247,8 +247,8 @@ BEGIN
     RETURNING idEndereco INTO v_enderecoId;
     
     -- Inserir uma nova empresa
-    INSERT INTO Empresa (usuarioId, cnpj, nome, telefone, enderecoId, nomeEmpresa, ramoAtuacao, site)
-    VALUES (v_usuarioId, p_cnpj, p_nome, p_telefone, v_enderecoId, p_nomeEmpresa, p_ramoAtuacao, p_site)
+    INSERT INTO Empresa (usuarioId, nome, telefone, enderecoId, nomeEmpresa, ramoAtuacao, site)
+    VALUES (v_usuarioId, p_nome, p_telefone, v_enderecoId, p_nomeEmpresa, p_ramoAtuacao, p_site)
     RETURNING idEmpresa INTO v_empresaId;
     
     RAISE NOTICE 'Empresa cadastrada com sucesso. ID: %', v_empresaId;
